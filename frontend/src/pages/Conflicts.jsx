@@ -1,100 +1,130 @@
-import React, { useEffect, useState } from "react";
-import API from "../api/client.js";
-import { AlertTriangle, Check } from "lucide-react";
+import { useEffect, useState } from "react";
+import { GitMerge, Check, ChevronRight } from "lucide-react";
+import { fetchConflicts, resolveConflict } from "../api/client.js";
+import { useToast } from "../context/ToastContext.jsx";
+import { useAuth } from "../context/AuthContext.jsx";
+import PageHeader from "../components/layout/PageHeader.jsx";
+import Badge from "../components/ui/Badge.jsx";
+import Spinner from "../components/ui/Spinner.jsx";
+import Skeleton from "../components/ui/Skeleton.jsx";
+import Button from "../components/ui/Button.jsx";
+import DiffViewer from "../components/conflicts/DiffViewer.jsx";
 
-const KIND_LABEL = {
-  version_change: "Version Change",
-  cross_document: "Cross-Document",
-};
-const CHANGE_COLOR = {
-  conflict: "bg-rose-100 text-rose-700 border-rose-300",
-  modified: "bg-amber-100 text-amber-700 border-amber-300",
-  added: "bg-green-100 text-green-700 border-green-300",
-  removed: "bg-slate-100 text-slate-600 border-slate-300",
+const CHANGE_VARIANT = {
+  added: "success",
+  removed: "danger",
+  modified: "warning",
+  conflict: "danger",
 };
 
 export default function Conflicts() {
-  const [conflicts, setConflicts] = useState([]);
+  const toast = useToast();
+  const { user } = useAuth();
+  const [conflicts, setConflicts] = useState(null);
+  const [selected, setSelected] = useState(null);
+  const canResolve = user?.role === "admin" || user?.role === "officer";
 
-  const load = () => API.get("/conflicts").then((r) => setConflicts(r.data));
+  const load = () => {
+    fetchConflicts()
+      .then((c) => {
+        setConflicts(c);
+        setSelected((s) => s ?? c[0]?.conflict_id ?? null);
+      })
+      .catch(() => toast("error", "Failed to load conflicts."));
+  };
   useEffect(load, []);
 
-  const resolve = (id) => API.post(`/conflicts/${id}/resolve`).then(load);
+  const onResolve = async (id) => {
+    try {
+      await resolveConflict(id);
+      toast("success", "Conflict resolved.");
+      load();
+    } catch {
+      toast("error", "Could not resolve conflict.");
+    }
+  };
+
+  if (conflicts === null) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-9 w-48" />
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
+          <Skeleton className="h-72" />
+          <Skeleton className="h-72" />
+        </div>
+      </div>
+    );
+  }
+
+  const open = conflicts.find((c) => c.conflict_id === selected);
+  const unresolved = conflicts.filter((c) => !c.resolved).length;
 
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold flex items-center gap-2 mb-4">
-        <AlertTriangle className="text-rose-500" /> Conflict & Change Detection
-      </h1>
+    <div className="space-y-6">
+      <PageHeader
+        title="Conflicts"
+        subtitle="Version changes and cross-document inconsistencies"
+        actions={<Badge variant={unresolved ? "danger" : "success"}>{unresolved} open</Badge>}
+      />
 
-      <div className="space-y-4">
-        {conflicts.length === 0 && (
-          <div className="text-slate-400">No conflicts detected.</div>
-        )}
-        {conflicts.map((c) => (
-          <div key={c.conflict_id} className="bg-white rounded-xl shadow-sm border p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span
-                  className={`px-2 py-0.5 rounded text-xs border ${
-                    CHANGE_COLOR[c.change_type] || "bg-slate-100"
-                  }`}
-                >
-                  {c.change_type}
-                </span>
-                <span className="text-xs text-slate-500">
-                  {KIND_LABEL[c.kind] || c.kind}
-                </span>
-                <span className="text-xs text-slate-400">· severity: {c.severity}</span>
-              </div>
-              {!c.resolved ? (
-                <button
-                  onClick={() => resolve(c.conflict_id)}
-                  className="text-sm px-3 py-1 rounded bg-green-600 text-white hover:bg-green-700"
-                >
-                  <Check size={14} className="inline" /> Resolve
-                </button>
-              ) : (
-                <span className="text-sm text-green-600">Resolved</span>
-              )}
-            </div>
-
-            <div className="text-sm font-medium mb-2">{c.obligation}</div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="rounded-lg border border-slate-200 p-3 bg-slate-50">
-                <div className="text-xs text-slate-500 mb-1">
-                  {c.kind === "version_change" ? "Previous" : "Document A"} ·{" "}
-                  {c.doc_a} · p{c.page_a}
-                </div>
-                <div className="text-sm whitespace-pre-wrap">
-                  {c.text_a || <span className="text-slate-400">— (not present)</span>}
-                </div>
-                {c.deadline_a && (
-                  <div className="text-xs text-slate-500 mt-2">
-                    Deadline: <span className="font-mono">{c.deadline_a}</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-lg border border-slate-200 p-3 bg-brand-50">
-                <div className="text-xs text-slate-500 mb-1">
-                  {c.kind === "version_change" ? "Updated" : "Document B"} ·{" "}
-                  {c.doc_b} · p{c.page_b}
-                </div>
-                <div className="text-sm whitespace-pre-wrap">
-                  {c.text_b || <span className="text-slate-400">— (not present)</span>}
-                </div>
-                {c.deadline_b && (
-                  <div className="text-xs text-slate-500 mt-2">
-                    Deadline: <span className="font-mono">{c.deadline_b}</span>
-                  </div>
-                )}
-              </div>
-            </div>
+      {conflicts.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-lg border border-border-primary bg-bg-secondary p-12 text-center">
+          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-accent-success/10 text-accent-success">
+            <Check className="w-7 h-7" />
           </div>
-        ))}
-      </div>
+          <p className="text-text-primary">No conflicts detected.</p>
+          <p className="mt-1 text-sm text-text-muted">
+            Upload a new version of a document to run comparison.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[340px_1fr]">
+          <div className="space-y-2">
+            {conflicts.map((c) => (
+              <button
+                key={c.conflict_id}
+                onClick={() => setSelected(c.conflict_id)}
+                className={`flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors ${
+                  selected === c.conflict_id
+                    ? "border-accent-primary bg-accent-primary/5"
+                    : "border-border-primary bg-bg-secondary hover:border-border-hover"
+                }`}
+              >
+                <GitMerge className="mt-0.5 w-4 h-4 shrink-0 text-text-muted" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-text-primary">{c.obligation}</p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <Badge variant={CHANGE_VARIANT[c.change_type] || "default"}>{c.change_type}</Badge>
+                    {c.resolved && <Badge variant="success">resolved</Badge>}
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 shrink-0 self-center text-text-muted" />
+              </button>
+            ))}
+          </div>
+
+          <div className="rounded-lg border border-border-primary bg-bg-secondary p-5">
+            {open ? (
+              <>
+                <DiffViewer conflict={open} />
+                <div className="mt-5 flex items-center justify-end gap-2 border-t border-border-primary pt-4">
+                  {open.resolved ? (
+                    <Badge variant="success">Resolved</Badge>
+                  ) : canResolve ? (
+                    <Button onClick={() => onResolve(open.conflict_id)}>
+                      <Check className="w-4 h-4" /> Accept & Resolve
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-text-muted">Admin/Officer can resolve.</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <p className="text-sm text-text-muted">Select a conflict to view details.</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

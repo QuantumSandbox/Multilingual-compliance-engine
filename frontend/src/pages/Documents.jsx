@@ -1,201 +1,219 @@
-import React, { useEffect, useState, useRef } from "react";
-import API from "../api/client.js";
-import { UploadCloud, FileText, Languages, History } from "lucide-react";
+import { useEffect, useState, useMemo } from "react";
+import { FileText, Search, GitCompare, RefreshCw, Download } from "lucide-react";
+import { Link } from "react-router-dom";
+import { fetchDocuments, compareDocument, fileUrl } from "../api/client.js";
+import { useToast } from "../context/ToastContext.jsx";
+import PageHeader from "../components/layout/PageHeader.jsx";
+import UploadZone from "../components/documents/UploadZone.jsx";
+import Card from "../components/ui/Card.jsx";
+import Input from "../components/ui/Input.jsx";
+import Badge from "../components/ui/Badge.jsx";
+import Spinner from "../components/ui/Spinner.jsx";
+import Skeleton from "../components/ui/Skeleton.jsx";
+import Button from "../components/ui/Button.jsx";
+
+const STATUS_VARIANT = {
+  active: "success",
+  archived: "default",
+  expired: "danger",
+};
+
+const LANG = { en: "English", hi: "Hindi", or: "Odia" };
 
 export default function Documents() {
-  const [docs, setDocs] = useState([]);
-  const [form, setForm] = useState({
-    title: "",
-    source_type: "circular",
-    source_dept: "",
-    version: "v1",
-    family_id: "",
-    sensitive: false,
-    retention_days: 1825,
-  });
-  const [file, setFile] = useState(null);
-  const [msg, setMsg] = useState("");
-  const [busy, setBusy] = useState(false);
-  const fileRef = useRef();
+  const toast = useToast();
+  const [docs, setDocs] = useState(null);
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [comparing, setComparing] = useState(null);
+  const PER = 6;
 
-  const load = () => API.get("/documents").then((r) => setDocs(r.data));
+  const load = () => {
+    fetchDocuments()
+      .then(setDocs)
+      .catch(() => toast("error", "Failed to load documents."));
+  };
+
   useEffect(load, []);
 
-  const submit = async (e) => {
-    e.preventDefault();
-    if (!file) return setMsg("Select a file first.");
-    setBusy(true);
-    setMsg("");
-    const fd = new FormData();
-    fd.append("file", file);
-    Object.entries(form).forEach(([k, v]) => fd.append(k, v));
+  const filtered = useMemo(() => {
+    if (!docs) return [];
+    return docs.filter((d) => {
+      const q = query.toLowerCase();
+      const matchQ =
+        !q ||
+        d.title.toLowerCase().includes(q) ||
+        d.source_dept.toLowerCase().includes(q) ||
+        d.doc_id.toLowerCase().includes(q);
+      const matchT = typeFilter === "all" || d.source_type === typeFilter;
+      return matchQ && matchT;
+    });
+  }, [docs, query, typeFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER));
+  const shown = filtered.slice((page - 1) * PER, page * PER);
+
+  const onCompare = async (docId) => {
+    setComparing(docId);
     try {
-      const res = await API.post("/documents/upload", fd);
-      setMsg(
-        `Processed "${res.data.title}" -> ${res.data.tasks_created} obligations (method: ${res.data.processed_with}). Conflicts recomputed.`
+      const res = await compareDocument(docId);
+      toast(
+        res.length ? "info" : "success",
+        res.length
+          ? `${res.length} version change(s) detected.`
+          : "No version changes detected."
       );
-      setForm({ ...form, title: "", family_id: "" });
-      setFile(null);
-      if (fileRef.current) fileRef.current.value = "";
-      load();
-    } catch (err) {
-      setMsg("Error: " + (err.response?.data?.detail || err.message));
+    } catch {
+      toast("error", "Comparison failed.");
     } finally {
-      setBusy(false);
+      setComparing(null);
     }
   };
 
-  const families = {};
-  docs.forEach((d) => {
-    (families[d.family_id] = families[d.family_id] || []).push(d);
-  });
-  Object.values(families).forEach((arr) =>
-    arr.sort((a, b) => a.version.localeCompare(b.version))
-  );
-
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-bold mb-4">Documents</h1>
+    <div className="space-y-6">
+      <PageHeader
+        title="Documents"
+        subtitle="Upload regulatory files and track version changes"
+        actions={
+          <Button variant="secondary" onClick={load}>
+            <RefreshCw className="w-4 h-4" /> Refresh
+          </Button>
+        }
+      />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-white rounded-xl shadow-sm p-4 lg:col-span-1">
-          <h2 className="font-semibold mb-3 flex items-center gap-2">
-            <UploadCloud size={18} className="text-brand-500" /> Upload & Ingest
-          </h2>
-          <form onSubmit={submit} className="space-y-3 text-sm">
+      <UploadZone onUploaded={load} />
+
+      <Card padding="none">
+        <div className="flex flex-col gap-3 border-b border-border-primary p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
             <input
-              ref={fileRef}
-              type="file"
-              accept=".pdf,.docx,.doc,.txt"
-              onChange={(e) => setFile(e.target.files[0])}
-              className="block w-full text-xs"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+              placeholder="Search documents..."
+              className="input-base w-full pl-9"
             />
-            <input
-              placeholder="Title"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              className="w-full border rounded px-2 py-1"
-              required
-            />
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                value={form.source_type}
-                onChange={(e) => setForm({ ...form, source_type: e.target.value })}
-                className="border rounded px-2 py-1"
-              >
-                <option value="circular">Circular</option>
-                <option value="accreditation">Accreditation</option>
-                <option value="procurement">Procurement</option>
-                <option value="policy">Policy</option>
-              </select>
-              <input
-                placeholder="Source dept"
-                value={form.source_dept}
-                onChange={(e) => setForm({ ...form, source_dept: e.target.value })}
-                className="border rounded px-2 py-1"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                placeholder="Version (v1)"
-                value={form.version}
-                onChange={(e) => setForm({ ...form, version: e.target.value })}
-                className="border rounded px-2 py-1"
-              />
-              <input
-                placeholder="Family ID (same = compare)"
-                value={form.family_id}
-                onChange={(e) => setForm({ ...form, family_id: e.target.value })}
-                className="border rounded px-2 py-1"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input
-                type="number"
-                placeholder="Retention days"
-                value={form.retention_days}
-                onChange={(e) => setForm({ ...form, retention_days: +e.target.value })}
-                className="border rounded px-2 py-1"
-              />
-              <label className="flex items-center gap-2 text-xs">
-                <input
-                  type="checkbox"
-                  checked={form.sensitive}
-                  onChange={(e) => setForm({ ...form, sensitive: e.target.checked })}
-                />
-                Sensitive (RBAC)
-              </label>
-            </div>
-            <button
-              disabled={busy}
-              className="w-full bg-brand-600 hover:bg-brand-700 text-white py-2 rounded-lg disabled:opacity-60"
-            >
-              {busy ? "Processing…" : "Upload & Extract"}
-            </button>
-            {msg && <div className="text-xs text-slate-600 mt-1">{msg}</div>}
-          </form>
+          </div>
+          <select
+            value={typeFilter}
+            onChange={(e) => {
+              setTypeFilter(e.target.value);
+              setPage(1);
+            }}
+            className="input-base w-full sm:w-48"
+          >
+            <option value="all" className="bg-bg-secondary">All Types</option>
+            <option value="circular" className="bg-bg-secondary">Circular</option>
+            <option value="accreditation" className="bg-bg-secondary">Accreditation</option>
+            <option value="procurement" className="bg-bg-secondary">Procurement</option>
+            <option value="policy" className="bg-bg-secondary">Policy</option>
+          </select>
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white rounded-xl shadow-sm p-4">
-            <h2 className="font-semibold mb-3 flex items-center gap-2">
-              <History size={18} className="text-brand-500" /> Version Timeline
-            </h2>
-            {Object.entries(families).map(([fam, arr]) => (
-              <div key={fam} className="mb-4">
-                <div className="text-xs text-slate-400 mb-1">Family: {fam}</div>
-                <div className="flex flex-wrap gap-2">
-                  {arr.map((d) => (
-                    <div
-                      key={d.doc_id}
-                      className="border rounded-lg px-3 py-2 text-sm bg-slate-50"
-                    >
-                      <div className="font-medium">{d.version}</div>
-                      <div className="text-xs text-slate-500">{d.title}</div>
-                      <div className="text-slate-400 text-[10px]">
-                        {d.chunk_count} chunks · {d.status}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+        {docs === null ? (
+          <div className="space-y-2 p-4">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-12" />
             ))}
           </div>
-
-          <div className="bg-white rounded-xl shadow-sm p-4">
-            <h2 className="font-semibold mb-3 flex items-center gap-2">
-              <FileText size={18} className="text-brand-500" /> All Documents
-            </h2>
-            <table className="w-full text-sm">
+        ) : filtered.length === 0 ? (
+          <p className="p-8 text-center text-sm text-text-muted">No documents found.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
               <thead>
-                <tr className="text-left text-slate-500 border-b">
-                  <th className="py-2">Title</th>
-                  <th>Version</th>
-                  <th>Lang</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Chunks</th>
+                <tr className="border-b border-border-primary text-xs uppercase text-text-muted">
+                  <th className="px-4 py-3 font-medium">Name</th>
+                  <th className="px-4 py-3 font-medium">Type</th>
+                  <th className="px-4 py-3 font-medium">Lang</th>
+                  <th className="px-4 py-3 font-medium">Uploaded</th>
+                  <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 text-right font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {docs.map((d) => (
-                  <tr key={d.doc_id} className="border-b">
-                    <td className="py-2">{d.title}</td>
-                    <td>{d.version}</td>
-                    <td className="flex items-center gap-1">
-                      <Languages size={13} className="text-slate-400" />
-                      {d.original_language}
+                {shown.map((d) => (
+                  <tr
+                    key={d.doc_id}
+                    className="border-b border-border-primary transition-colors hover:bg-bg-tertiary/30"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-4 h-4 shrink-0 text-text-muted" />
+                        <div className="min-w-0">
+                          <p className="truncate font-medium text-text-primary">{d.title}</p>
+                          <p className="text-xs text-text-muted">
+                            {d.version} · {d.source_dept || "—"}
+                          </p>
+                        </div>
+                      </div>
                     </td>
-                    <td className="text-slate-500">{d.source_type}</td>
-                    <td className="text-slate-500">{d.status}</td>
-                    <td className="text-slate-500">{d.chunk_count}</td>
+                    <td className="px-4 py-3 text-text-secondary capitalize">{d.source_type}</td>
+                    <td className="px-4 py-3">
+                      <Badge variant="info">{LANG[d.language] || d.language}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-text-muted">
+                      {new Date(d.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Badge variant={STATUS_VARIANT[d.status] || "default"}>{d.status}</Badge>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => onCompare(d.doc_id)}
+                          disabled={comparing === d.doc_id}
+                          title="Compare versions"
+                        >
+                          {comparing === d.doc_id ? (
+                            <Spinner size={14} />
+                          ) : (
+                            <GitCompare className="w-4 h-4" />
+                          )}
+                        </Button>
+                        <a
+                          href={fileUrl(d.doc_id)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-text-muted hover:bg-bg-tertiary hover:text-text-primary"
+                          title="Download"
+                        >
+                          <Download className="w-4 h-4" />
+                        </a>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </div>
-      </div>
+        )}
+
+        {docs && totalPages > 1 && (
+          <div className="flex items-center justify-center gap-1 border-t border-border-primary p-3">
+            {Array.from({ length: totalPages }).map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setPage(i + 1)}
+                className={`h-8 w-8 rounded-md text-sm transition-colors ${
+                  page === i + 1
+                    ? "bg-accent-primary text-white"
+                    : "text-text-secondary hover:bg-bg-tertiary"
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+          </div>
+        )}
+      </Card>
     </div>
   );
 }

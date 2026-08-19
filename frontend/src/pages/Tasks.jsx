@@ -1,110 +1,154 @@
-import React, { useEffect, useState } from "react";
-import API from "../api/client.js";
+import { useEffect, useState, useMemo } from "react";
+import { Search, Plus, CheckSquare } from "lucide-react";
+import { fetchTasks, updateTask } from "../api/client.js";
+import { useToast } from "../context/ToastContext.jsx";
+import PageHeader from "../components/layout/PageHeader.jsx";
+import Card from "../components/ui/Card.jsx";
+import Input from "../components/ui/Input.jsx";
+import Spinner from "../components/ui/Spinner.jsx";
+import Skeleton from "../components/ui/Skeleton.jsx";
+import TaskCard from "../components/tasks/TaskCard.jsx";
 import CitationDrawer from "../components/CitationDrawer.jsx";
-import { Quote, Filter } from "lucide-react";
 
 const COLUMNS = [
-  { key: "pending", label: "Pending", color: "bg-amber-400" },
-  { key: "in_progress", label: "In Progress", color: "bg-sky-400" },
-  { key: "completed", label: "Completed", color: "bg-green-400" },
+  { key: "pending", label: "Pending", accent: "text-text-muted" },
+  { key: "in_progress", label: "In Progress", accent: "text-accent-primary-hover" },
+  { key: "completed", label: "Completed", accent: "text-accent-success" },
+  { key: "overdue", label: "Overdue", accent: "text-accent-danger" },
 ];
 
-function isOverdue(t) {
-  return t.deadline && new Date(t.deadline) < new Date() && t.status !== "completed";
-}
-
-function TaskCard({ t, onClick }) {
-  return (
-    <div
-      onClick={onClick}
-      className="bg-white border rounded-lg p-3 shadow-sm hover:shadow-md cursor-pointer"
-    >
-      <div className="text-sm">{t.obligation}</div>
-      <div className="flex items-center justify-between mt-2 text-xs text-slate-500">
-        <span>{t.responsible_unit || "—"}</span>
-        <span className={t.deadline ? "font-mono" : ""}>
-          {t.deadline || "no deadline"}
-        </span>
-      </div>
-      <div className="flex items-center justify-between mt-2">
-        <span className="text-[10px] uppercase tracking-wide text-slate-400">
-          {t.extraction_method} · {Math.round((t.confidence || 0) * 100)}%
-        </span>
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onClick();
-          }}
-          className="text-brand-500 hover:text-brand-700"
-          title="View source citation"
-        >
-          <Quote size={14} />
-        </button>
-      </div>
-    </div>
-  );
-}
-
 export default function Tasks() {
-  const [tasks, setTasks] = useState([]);
-  const [active, setActive] = useState(null);
-  const [unitFilter, setUnitFilter] = useState("");
+  const toast = useToast();
+  const [tasks, setTasks] = useState(null);
+  const [query, setQuery] = useState("");
+  const [unit, setUnit] = useState("");
+  const [citationId, setCitationId] = useState(null);
+  const [dragId, setDragId] = useState(null);
+  const [dragOver, setDragOver] = useState(null);
 
   const load = () => {
-    API.get("/tasks", { params: unitFilter ? { unit: unitFilter } : {} }).then((r) =>
-      setTasks(r.data)
-    );
+    fetchTasks()
+      .then(setTasks)
+      .catch(() => toast("error", "Failed to load tasks."));
   };
-  useEffect(load, [unitFilter]);
+  useEffect(load, []);
 
-  const columns = COLUMNS.map((c) => ({
-    ...c,
-    items: tasks.filter((t) => t.status === c.key),
-  }));
-  const overdue = tasks.filter(isOverdue);
+  const units = useMemo(() => {
+    if (!tasks) return [];
+    return [...new Set(tasks.map((t) => t.responsible_unit).filter(Boolean))].sort();
+  }, [tasks]);
+
+  const filtered = useMemo(() => {
+    if (!tasks) return [];
+    const q = query.toLowerCase();
+    return tasks.filter(
+      (t) =>
+        (!q || t.obligation.toLowerCase().includes(q)) &&
+        (!unit || t.responsible_unit === unit)
+    );
+  }, [tasks, query, unit]);
+
+  const byStatus = (status) => filtered.filter((t) => t.status === status);
+
+  const onDrop = async (status) => {
+    setDragOver(null);
+    if (!dragId) return;
+    const task = tasks.find((t) => t.task_id === dragId);
+    if (!task || task.status === status) return;
+    const prev = tasks;
+    setTasks((ts) => ts.map((t) => (t.task_id === dragId ? { ...t, status } : t)));
+    try {
+      await updateTask(dragId, { status });
+      toast("success", `Moved to ${status.replace("_", " ")}.`);
+    } catch {
+      setTasks(prev);
+      toast("error", "Failed to update task.");
+    }
+    setDragId(null);
+  };
 
   return (
-    <div className="p-6">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-2xl font-bold">Compliance Tasks</h1>
-        <div className="flex items-center gap-2 text-sm">
-          <Filter size={16} className="text-slate-400" />
+    <div className="space-y-6">
+      <PageHeader
+        title="Tasks"
+        subtitle="Extracted obligations as traceable compliance tasks"
+        actions={
+          <button className="inline-flex h-10 items-center rounded-md bg-accent-primary px-4 text-sm font-medium text-white hover:bg-accent-primary-hover">
+            <Plus className="w-4 h-4" /> New Task
+          </button>
+        }
+      />
+
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-text-muted" />
           <input
-            placeholder="Filter by unit…"
-            value={unitFilter}
-            onChange={(e) => setUnitFilter(e.target.value)}
-            className="border rounded px-2 py-1"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search tasks..."
+            className="input-base w-full pl-9"
           />
         </div>
+        <select value={unit} onChange={(e) => setUnit(e.target.value)} className="input-base w-full sm:w-56">
+          <option value="" className="bg-bg-secondary">All Departments</option>
+          {units.map((u) => (
+            <option key={u} value={u} className="bg-bg-secondary">{u}</option>
+          ))}
+        </select>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {columns.map((col) => (
-          <div key={col.key} className="bg-slate-100 rounded-xl p-3">
-            <div className="flex items-center gap-2 mb-3">
-              <span className={`w-2 h-2 rounded-full ${col.color}`} />
-              <span className="font-semibold text-sm">{col.label}</span>
-              <span className="text-xs text-slate-400 ml-auto">{col.items.length}</span>
-            </div>
-            <div className="space-y-2">
-              {col.items.map((t) => (
-                <TaskCard key={t.task_id} t={t} onClick={() => setActive(t.task_id)} />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-6 bg-rose-50 border border-rose-200 rounded-xl p-4">
-        <h2 className="font-semibold text-rose-700 mb-2">Overdue ({overdue.length})</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-          {overdue.map((t) => (
-            <TaskCard key={t.task_id} t={t} onClick={() => setActive(t.task_id)} />
+      {tasks === null ? (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-64" />
           ))}
         </div>
-      </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {COLUMNS.map((col) => {
+            const items = byStatus(col.key);
+            return (
+              <div
+                key={col.key}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(col.key);
+                }}
+                onDragLeave={() => setDragOver((d) => (d === col.key ? null : d))}
+                onDrop={() => onDrop(col.key)}
+                className={`flex flex-col rounded-lg border bg-bg-secondary/50 transition-colors ${
+                  dragOver === col.key ? "border-accent-primary" : "border-border-primary"
+                }`}
+              >
+                <div className="flex items-center justify-between border-b border-border-primary px-3 py-2.5">
+                  <h3 className={`text-sm font-semibold ${col.accent}`}>{col.label}</h3>
+                  <span className="rounded-full bg-bg-tertiary px-2 py-0.5 text-xs text-text-secondary">
+                    {items.length}
+                  </span>
+                </div>
+                <div className="flex min-h-[120px] flex-1 flex-col gap-3 p-3">
+                  {items.map((t) => (
+                    <div
+                      key={t.task_id}
+                      draggable
+                      onDragStart={() => setDragId(t.task_id)}
+                      onDragEnd={() => setDragId(null)}
+                      className="cursor-grab active:cursor-grabbing"
+                    >
+                      <TaskCard task={t} onOpenCitation={setCitationId} />
+                    </div>
+                  ))}
+                  {items.length === 0 && (
+                    <p className="py-6 text-center text-xs text-text-muted">No tasks</p>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
-      <CitationDrawer taskId={active} onClose={() => setActive(null)} />
+      {citationId && <CitationDrawer taskId={citationId} onClose={() => setCitationId(null)} />}
     </div>
   );
 }

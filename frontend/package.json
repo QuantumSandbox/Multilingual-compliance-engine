@@ -1,26 +1,26 @@
 {
-  "name": "compliance-frontend",
+  "name": "compliance-engine-frontend",
   "private": true,
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "vite --port 3002 --host",
     "build": "vite build",
-    "preview": "vite preview --host"
+    "preview": "vite preview --port 3002"
   },
   "dependencies": {
     "axios": "^1.7.7",
-    "lucide-react": "^0.451.0",
+    "lucide-react": "^0.453.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.2",
-    "recharts": "^2.12.7"
+    "react-router-dom": "^6.27.0",
+    "recharts": "^2.13.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.2",
+    "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.47",
-    "tailwindcss": "^3.4.13",
-    "vite": "^5.4.8"
+    "tailwindcss": "^3.4.14",
+    "vite": "^5.4.10"
   }
 }

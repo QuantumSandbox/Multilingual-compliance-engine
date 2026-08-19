@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #0f172a;
+  --bg-secondary: #1e293b;
+  --bg-tertiary: #334155;
+  --bg-hover: #475569;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-disabled: #64748b;
+
+  --accent-primary: #6366f1;
+  --accent-success: #22c55e;
+  --accent-warning: #f59e0b;
+  --accent-danger: #ef4444;
+  --accent-info: #06b6d4;
+
+  --border-primary: #334155;
+  --border-hover: #475569;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.15);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Visible focus for keyboard navigation (WCAG, design.md 10.2) */
+:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
+}
+
+/* Scrollbar styling for dark theme */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 9999px;
+  border: 2px solid #0f172a;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+@layer components {
+  .card {
+    @apply bg-bg-secondary border border-border-primary rounded-lg p-6 transition-all duration-150;
+  }
+  .card-hover:hover {
+    @apply border-border-hover;
+  }
+
+  .input-base {
+    @apply bg-bg-secondary border border-border-hover rounded-md px-3 py-2.5 text-[16px] text-text-primary placeholder:text-text-disabled transition-all duration-150 outline-none;
+  }
+  .input-base:focus {
+    @apply border-accent-primary;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium text-text-secondary transition-colors duration-150;
+  }
+  .nav-link:hover {
+    @apply bg-bg-tertiary text-text-primary;
+  }
+  .nav-link-active {
+    @apply bg-accent-primary/10 text-accent-primary-hover;
+  }
+
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-sm px-2 py-1 text-xs font-medium;
+  }
+
+  .skeleton {
+    @apply bg-bg-tertiary rounded-md animate-pulse;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  /* Respect reduced motion (design.md 10.x) */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}

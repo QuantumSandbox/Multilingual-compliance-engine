@@ -24,7 +24,7 @@ and surfaces everything in a compliance dashboard with role-based access.
 ## Tech stack
 - Backend: FastAPI · SQLAlchemy + SQLite · PyMuPDF · sentence-transformers
   (multilingual-e5) · google-generativeai (Gemini).
-- Frontend: React · Vite · TailwindCSS · Recharts · React Router.
+- Frontend: React · Vite · TailwindCSS · Recharts · React Router · lucide-react.
 - No external databases to run — everything is local & offline-friendly.
 
 ## Quick start
@@ -46,16 +46,16 @@ API docs: http://localhost:8000/docs
 ```bash
 cd frontend
 npm install
-npm run dev                          # http://localhost:5173 (proxies /api -> :8000)
+npm run dev                          # http://localhost:3002 (proxies /api -> :8000)
 ```
 
 ### 3. Demo accounts
-| Username    | Password   | Role / scope                                  |
-|-------------|------------|-----------------------------------------------|
-| `admin`     | `admin123` | Administrator — full access                   |
-| `hod_finance`| `hod123`  | Dept Head — sees only Finance-unit tasks      |
-| `hod_cse`   | `hod123`   | Dept Head — (no Finance tasks → demonstrates scoping) |
-| `viewer`    | `viewer123`| Read-only, no sensitive documents             |
+| Username     | Password   | Role / scope                                   |
+|--------------|------------|------------------------------------------------|
+| `admin`      | `admin123` | Administrator — full access                    |
+| `hod_finance`| `hod123`   | Dept Head — sees only Finance-unit tasks       |
+| `hod_cse`    | `hod123`   | Dept Head — (no Finance tasks → demonstrates scoping) |
+| `viewer`     | `viewer123`| Read-only, no sensitive documents              |
 
 ## Using Gemini (optional but recommended)
 Add `GEMINI_API_KEY=...` to `backend/.env` (free key at https://aistudio.google.com/apikey).
@@ -70,6 +70,85 @@ live translation (the Hindi sample then shows language detection only).
 4. **Conflicts** → review Added / Modified / Conflicting clauses, resolve them.
 5. Login as **hod_finance** vs **viewer** to see RBAC scoping in action.
 
+## UI Design
+The frontend follows a modern RegTech design system with:
+- **Dark gradient sidebar** with active state indicator and role-colored badges
+- **Blurred topbar** with global search and notification bell
+- **Shimmer skeletons** for loading states instead of plain text
+- **Staggered entrance animations** on stat cards and data rows
+- **Confidence meters** (progress bars) on every task card
+- **Color-coded conflict cards** with `border-l-4` by change type
+- **Drag-and-drop upload zone** with processing stepper
+- **Horizontal version timeline** with connected nodes
+- **Citation drawer** with segmented Original/English tabs and copy-to-clipboard
+- **Semantic status badges** (color + icon + label, never color alone)
+- **Responsive** — sidebar collapses to mobile drawer, grids stack on small screens
+- **Accessible** — WCAG AA contrast, `prefers-reduced-motion` respected
+
+Design tokens are defined in `tailwind.config.js` (brand scale, semantic colors)
+and `index.css` (animations, utilities). Full spec in `design.md`.
+
+## Working Demo
+
+A modern, dark-themed RegTech UI built with React + Vite + TailwindCSS, following
+the full design system in `design.md`.
+
+![Dashboard](assets/Screenshot%201.png)
+![Documents & Upload](assets/Screenshot%202.png)
+![Tasks / Kanban](assets/Screenshot%203.png)
+![Conflicts / Diff Viewer](assets/Screenshot%204.png)
+![Timeline](assets/Screenshot%205.png)
+![Login](assets/Screenshot%206.png)
+![Settings](assets/Screenshot%207.png)
+
+## Run instructions
+
+> Requires: Python 3.11+, Node.js 18+ (Node 20/22 recommended).
+
+### 1. Backend (FastAPI)
+
+```bash
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1          # Windows  (or: source .venv/bin/activate on macOS/Linux)
+pip install -r requirements.txt
+cp .env.example .env                   # optional: add GEMINI_API_KEY
+python -m seed.make_samples           # generate sample circulars (PDF/DOCX)
+python -m seed.seed_docs              # ingest + extract + compare (creates the SQLite DB)
+uvicorn app.main:app --reload --port 8000
+```
+API docs: http://localhost:8000/docs
+
+### 2. Frontend (React + Vite)
+
+```bash
+cd frontend
+npm install
+npm run dev                           # http://localhost:3002 (proxies /api -> :8000)
+```
+
+The Vite dev server proxies every `/api/*` request to the backend on port `8000`,
+so make sure the backend is running first.
+
+### 3. Demo accounts
+
+| Username     | Password   | Role / scope                                   |
+|--------------|------------|------------------------------------------------|
+| `admin`      | `admin123` | Administrator — full access                    |
+| `officer`    | `officer123`| Compliance Officer                             |
+| `hod_finance`| `hod123`   | Dept Head — sees only Finance-unit tasks       |
+| `hod_cse`    | `hod123`   | Dept Head — (no Finance tasks → demonstrates scoping) |
+| `viewer`     | `viewer123`| Read-only, no sensitive documents              |
+
+### 4. Try the live flow
+1. Login as **admin** → Dashboard shows extracted obligations, upcoming deadlines, conflicts.
+2. **Documents** → upload `AICTE_v2.pdf` under the same *Family ID* as v1 to trigger
+   side-by-side conflict detection (deadline: Mar 31 → Apr 30, etc.).
+3. **Tasks** → drag a card between columns to change status; click the eye icon to open
+   the Citation drawer with the exact source passage (Original / English tabs).
+4. **Conflicts** → review Added / Modified / Conflicting clauses, then resolve them.
+5. Login as **hod_finance** vs **viewer** to see RBAC scoping in action.
+
 ## Project layout
 ```
 backend/
@@ -82,6 +161,8 @@ backend/
   seed/           sample-doc generator + ingestion script
 frontend/
   src/pages       Login, Dashboard, Tasks, Conflicts, Documents
-  src/components  Layout, CitationDrawer
+  src/components  Layout (sidebar + topbar), CitationDrawer
+  src/api         Axios client with JWT interceptor
 sample_data/      generated regulatory documents
+design.md         full UI/UX design specification
 ```

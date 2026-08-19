@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     default_retention_days: int = int(os.getenv("DEFAULT_RETENTION_DAYS", "1825"))
 
     database_url: str = f"sqlite:///{DB_PATH}"
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    cors_origins: list[str] = ["http://localhost:3002", "http://localhost:5173"]
 
     class Config:
         env_file = str(BASE_DIR / ".env")
